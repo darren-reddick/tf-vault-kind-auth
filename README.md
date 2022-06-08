@@ -14,8 +14,8 @@ Once the userdata script has run vault should be ready and the root token should
 
 ## Kubernetes and Vault Admin
 
-1. Start an SSH session via ssm to the vault-k8s-client (see terraform **vault-k8s-client-connect** output)
-1. create K8S RBAC resources for vault auth
+1. Start an ssh session via ssm to the vault-k8s-client (see terraform **vault-k8s-client-connect** output)
+1. Create K8S RBAC resources for vault authentication. The **vault-reviewer** account will be used by vault to validate requests for secrets from pods in the client cluster - for this it requires the **system:auth-delegator** ClusterRole
     ```
     cat << EOF | sudo kubectl apply -f -
     ---
@@ -49,7 +49,7 @@ Once the userdata script has run vault should be ready and the root token should
       name: vault-auth
     EOF
     ```
-1. Get the vault-reviewer token
+1. Fetch the token for the **vault-reviewer** service account
     ```
     REVIEWER_TOKEN=$(sudo kubectl get secret \
     $(sudo kubectl get serviceaccount vault-reviewer \
@@ -60,7 +60,7 @@ Once the userdata script has run vault should be ready and the root token should
     APISERVER=$(sudo kubectl config view -o jsonpath='{.clusters[*].cluster.server}')
     ```
 
-1. fetch the k8s ca crt and store in a file
+1. Fetch the K8S cluster CA certificate and store in a file
     ```
     sudo kubectl get secrets -ojson | jq -r '.items[] | select(.metadata.name | startswith("default-token-")).data["ca.crt"]' | base64 -d - > ${HOME}/ca.crt
     ```
@@ -75,12 +75,12 @@ Once the userdata script has run vault should be ready and the root token should
     vault login
     ```
 
-1. enable the K8S auth method
+1. Enable the K8S auth method
     ```
     vault auth enable kubernetes
     ```
 
-1. configure the k8s auth method
+1. Configure the K8S auth method using the values obtained from K8S in previous steps 
     ```
     vault write auth/kubernetes/config \
         token_reviewer_jwt=${REVIEWER_TOKEN}  \
@@ -88,7 +88,7 @@ Once the userdata script has run vault should be ready and the root token should
         kubernetes_ca_cert=@${HOME}/ca.crt
     ```
 
-1. Create a role under k8s auth method
+1. Create the **demo** role under K8S auth method linked to the **kube-auth** policy. This role will enable pods running under service account **vault-auth** in the **default** namespace (of the client cluster) to assume it
     ```
     vault write auth/kubernetes/role/demo \
         bound_service_account_names=vault-auth \
