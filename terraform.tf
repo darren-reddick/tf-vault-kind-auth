@@ -7,7 +7,6 @@ terraform {
   }
 }
 
-// AWS provider options
 provider "aws" {
   region = var.aws_region
 }

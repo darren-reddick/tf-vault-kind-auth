@@ -94,52 +94,131 @@ Once the userdata script has run vault should be ready and the root token should
         bound_service_account_names=vault-auth \
         bound_service_account_namespaces=default \
         policies=kube-auth \
-        period=60s
+        period=300s
     ```
 
-1. Enable kv2 secrets engine
+1. Enable aws secrets engine
     ```
-    vault secrets enable -path=secret kv-v2
+    vault secrets enable aws
     ```
 
-1. Create vault-auth policy to read creds secret
+1. Create an aws vault role to read dynamodb database
+    ```
+    vault write aws/roles/read-dynamo-role \
+        credential_type=iam_user \
+        policy_document=-<<EOF
+    {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Action": "dynamodb:*",
+          "Resource": "*"
+        }
+      ]
+    }
+    EOF
+    ```
+
+1. Create vault-auth policy to use dynamo role
     ```
     vault policy write kube-auth - << EOF
-    path "secret/data/creds" {
+    path "aws/creds/read-dynamo-role" {
     capabilities = ["read"]
     }
     EOF
     ```
 
-1. Create the creds secret
-    ```
-    vault kv put secret/creds GREETING=Hello NAME=World
-    ```
-
-1. Check we can read it
-    ```
-    vault kv get secret/creds
-    ```
 ## Testing Authentication by serviceaccount
 
 1. Read the **vault-auth** serviceaccount token and use it to authenticate to the vault server
     ```
-    AUTH=$(curl --request POST --data '{"jwt": "'$(sudo kubectl get secret \
-    $(sudo kubectl get serviceaccount vault-auth \
-    -o jsonpath={.secrets[0].name}) -o jsonpath={.data.token} | base64 -d -)'", "role": "demo"}' ${VAULT_ADDR}/v1/auth/kubernetes/login)
+    cat << 'EOF' > entrypoint.sh
+    #!/bin/bash
+
+    log() {
+        echo "$(date): $1"
+    }
+
+    [ -z "${VAULT_ADDR}" ] && { echo "Missing VAULT_ADDR env var"; exit 1; }
+    [ -z "${ROLE}" ] && { echo "Missing ROLE env var"; exit 1; }
+    [ -z "${TABLE_NAME}" ] && { echo "Missing TABLE_NAME env var"; exit 1; }
+
+    log "Fetching serviceaccount token"
+    TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+
+    log "Using K8S serviceaccount JWT to login to vault"
+    AUTH=$(curl -sS --request POST --data '{"jwt": "'"${TOKEN}"'", "role": "'"${ROLE}"'"}' "${VAULT_ADDR}"/v1/auth/kubernetes/login)
+
+    log "Extracting client_token"
+    CLIENT_TOKEN=$(echo "${AUTH}" | jq -r '.auth.client_token')
+
+    log "Requesting dynamo read credentials"
+    CREDS=$(curl -sS -H "X-Vault-Request: true" -H "X-Vault-Token: ${CLIENT_TOKEN}" "${VAULT_ADDR}"/v1/aws/creds/read-dynamo-role)
+
+    export AWS_ACCESS_KEY_ID=$(jq -r '.data.access_key' <<< "${CREDS}")
+    export AWS_SECRET_ACCESS_KEY=$(jq -r '.data.secret_key' <<< "${CREDS}")
+
+    log "Sleeping to let creds become consistent"
+    sleep 10
+
+    log "Reading item from dynamodb table"
+    aws dynamodb get-item --table-name "${TABLE_NAME}" --key '{"userid": {"S": "1234"}}'
+
+    EOF
+
+    chmod u+x entrypoint.sh
     ```
 
-1. Verify that the authenticated user is using the **demo** role
+1. Create the Dockerfile for the test image
     ```
-    echo $AUTH | jq '.auth.metadata'
+    cat << EOF > Dockerfile
+    FROM amazon/aws-cli:latest
+
+    RUN yum update -y \
+      && yum install -y jq \
+      && yum clean all
+
+    COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+    ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+
+    EOF
     ```
 
-1. Extract the token from the response
+1. Build the docker image for testing
     ```
-    TOKEN=$(echo ${AUTH} | jq -r '.auth.client_token')
+    docker build -t vault-auth-tester .
     ```
 
-1. Use the token to fetch the creds secret using a raw curl so we can ensure we use the TOKEN for **vault-auth**
+1. Load the image into the kind cluster
     ```
-    curl -H "X-Vault-Request: true" -H "X-Vault-Token: ${TOKEN}" ${VAULT_ADDR}/v1/secret/data/creds | jq '.'
+    kind load docker-image vault-auth-tester:latest
+    ```
+
+1. Run the test container in a pod using the **vault-auth** serviceaccount
+    ```
+    kubectl apply -f - <<EOF
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: vault-auth-tester
+    spec:
+      serviceAccountName: vault-auth
+      containers:
+      - name: vault-auth-tester
+        image: vault-auth-tester:latest
+        imagePullPolicy: Never
+        env:
+          - name: ROLE
+            value: demo
+          - name: VAULT_ADDR
+            value: ${VAULT_ADDR}
+          - name: TABLE_NAME
+            value: vault-auth-Table
+    EOF
+    ```
+
+1. View the pod logs which should show an item being fetched from the dynamodb table (see aws_dynamodb_table_item resource in dynamo.tf file)
+    ```
+    kubectl logs vault-auth-tester
     ```

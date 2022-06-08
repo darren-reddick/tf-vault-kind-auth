@@ -1,6 +1,5 @@
 locals {
-  prefix                = var.prefix
-  cluster_init_sec_name = "${var.prefix}-cluster-init-output"
+  prefix = "vault-auth"
 }
 
 data "aws_caller_identity" "current" {}

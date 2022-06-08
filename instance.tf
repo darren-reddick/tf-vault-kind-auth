@@ -22,19 +22,6 @@ resource "aws_instance" "vault_server" {
   iam_instance_profile   = aws_iam_instance_profile.kind_nodes.name
   vpc_security_group_ids = [aws_security_group.kind_node_sg.id]
   user_data              = <<MEOF
-${base64encode(local.vault_server_user_data)}
-MEOF
-
-  tags = {
-    Name = "Vault-Server"
-  }
-
-  depends_on = [module.vpc.private_nat_gateway_route_ids]
-
-}
-
-locals {
-  vault_server_user_data = <<MEOF
 #!/usr/bin/env bash
 
 cd ~
@@ -48,7 +35,15 @@ kind \
   --config kind.conf
 
 ${templatefile("${path.module}/templates/install_vault.sh.tpl", {})}
+
 MEOF
+
+  tags = {
+    Name = "Vault-Server"
+  }
+
+  depends_on = [module.vpc.private_nat_gateway_route_ids]
+
 }
 
 data "aws_iam_policy_document" "ec2_assume_role" {
@@ -76,6 +71,11 @@ resource "aws_iam_instance_profile" "kind_nodes" {
 resource "aws_iam_role_policy_attachment" "ssm_managed_core_attach" {
   role       = aws_iam_role.kind_nodes.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
+resource "aws_iam_role_policy_attachment" "vault_server" {
+  role       = aws_iam_role.kind_nodes.name
+  policy_arn = aws_iam_policy.vault_server.id
 }
 
 resource "aws_security_group" "kind_node_sg" {
@@ -120,18 +120,6 @@ resource "aws_instance" "vault_k8s_client" {
   iam_instance_profile   = aws_iam_instance_profile.kind_nodes.name
   vpc_security_group_ids = [aws_security_group.kind_node_sg.id]
   user_data              = <<MEOF
-${base64encode(local.vault_k8s_client_user_data)}
-MEOF
-
-  tags = {
-    Name = "Vault-K8S-Client"
-  }
-
-  depends_on = [module.vpc.private_nat_gateway_route_ids]
-}
-
-locals {
-  vault_k8s_client_user_data = <<MEOF
 #!/usr/bin/env bash
 
 cd ~
@@ -154,5 +142,13 @@ apt-add-repository "deb [arch=amd64] https://apt.releases.hashicorp.com $(lsb_re
 apt-get update && apt-get install vault
 
 MEOF
+
+  tags = {
+    Name = "Vault-K8S-Client"
+  }
+
+  depends_on = [module.vpc.private_nat_gateway_route_ids]
 }
+
+
 
