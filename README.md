@@ -1,6 +1,40 @@
-## Root token
+# :zap: Overview
 
-Once the userdata script has run vault should be ready and the root token should be available in a local file (terrible security but its a demo)
+This repo is a lab / demo type repo for working with Vault and Kubernetes. It was created to be used to get a better understanding of using using Kubernetes as an authentication method with Vault.
+
+A pair of kubernetes clusters are deployed on ec2 instances using [kind](https://kind.sigs.k8s.io/) to simplify the set up:
+- cluster 1 hosts the vault service (this could easily have been done without using K8S but it was used as the helm charts simplifies the deployment of the vault cluster).
+- cluster 2 will be the client cluster of ther vault service. Vault will use its API to verify the JWT login tokens from the clients.
+
+## :secret: Secrets Workflow
+
+The following diagram illustrates the workflow for clients fetching dynamic AWS secrets using K8s as the authentication method.
+
+![Screenshot](Vault-k8s-aws-secrets-workflow.drawio.png)
+# :scroll: Prerequisites
+
+1. An AWS account
+1. terraform installed locally
+1. An AWS IAM user with the appropriate role to deploy the infrastructure (I have used an admin role)
+
+Clone this repository and install dependencies:
+
+```
+git clone https://github.com:darren-reddick/tf-vault-kind-auth.git
+```
+
+# :clipboard: Procedure
+## :truck: Deploying the Infrastructure
+
+Deploy the infrastructure on AWS using terraform
+```
+terraform init
+terraform apply
+```
+
+## :key: Obtain Root token
+
+Once the userdata script has run vault should be ready and the root token should be available in a local file (terrible security but... its a demo!)
 
 1. Start an SSH session via ssm to the vault-server (see terraform **vault-server-connect** output)
 1. Watch kubectl pod status until all of the vault pods go into ready status
@@ -12,7 +46,7 @@ Once the userdata script has run vault should be ready and the root token should
     sudo cat /root/init.json
     ```
 
-## Kubernetes and Vault Admin
+## :pager: Kubernetes and Vault Admin
 
 1. Start an ssh session via ssm to the vault-k8s-client (see terraform **vault-k8s-client-connect** output)
 1. Create K8S RBAC resources for vault authentication. The **vault-reviewer** account will be used by vault to validate requests for secrets from pods in the client cluster - for this it requires the **system:auth-delegator** ClusterRole
@@ -129,7 +163,7 @@ Once the userdata script has run vault should be ready and the root token should
     EOF
     ```
 
-## Testing Authentication by serviceaccount
+## :beginner: Testing Authentication by serviceaccount
 
 1. Read the **vault-auth** serviceaccount token and use it to authenticate to the vault server
     ```
