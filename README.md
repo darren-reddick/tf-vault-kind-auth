@@ -37,6 +37,9 @@ terraform apply
 Once the userdata script has run vault should be ready and the root token should be available in a local file (terrible security but... its a demo!)
 
 1. Start an SSH session via ssm to the vault-server (see terraform **vault-server-connect** output)
+    ```
+    aws ssm start-session --target [instance-id]
+    ```
 1. Watch kubectl pod status until all of the vault pods go into ready status
     ```
     sudo kubectl get po -w
@@ -49,6 +52,10 @@ Once the userdata script has run vault should be ready and the root token should
 ## :pager: Kubernetes and Vault Admin
 
 1. Start an ssh session via ssm to the vault-k8s-client (see terraform **vault-k8s-client-connect** output)
+    ```
+    aws ssm start-session --target [instance-id]
+    ```
+
 1. Create K8S RBAC resources for vault authentication. The **vault-reviewer** account will be used by vault to validate requests for secrets from pods in the client cluster - for this it requires the **system:auth-delegator** ClusterRole
     ```
     cat << EOF | sudo kubectl apply -f -
