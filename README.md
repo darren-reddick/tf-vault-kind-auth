@@ -165,7 +165,7 @@ Once the userdata script has run vault should be ready and the root token should
 
 ## :beginner: Testing Authentication by serviceaccount
 
-1. Read the **vault-auth** serviceaccount token and use it to authenticate to the vault server
+1. Create the entrypoint for the docker container which will read the **vault-auth** serviceaccount token, use it to authenticate to the vault server, generate a dynamic AWS secret and use it to read a dynamodb table
     ```
     cat << 'EOF' > entrypoint.sh
     #!/bin/bash
@@ -252,7 +252,7 @@ Once the userdata script has run vault should be ready and the root token should
     EOF
     ```
 
-1. View the pod logs which should show an item being fetched from the dynamodb table (see aws_dynamodb_table_item resource in dynamo.tf file)
+1. View the pod logs which should show an item being fetched from the dynamodb table (see aws_dynamodb_table_item resource in [dynamo.tf](dynamo.tf) file)
     ```
     kubectl logs vault-auth-tester
     ```
