@@ -10,7 +10,7 @@ A pair of kubernetes clusters are deployed on ec2 instances using [kind](https:/
 
 The following diagram illustrates the workflow for clients fetching dynamic AWS secrets using K8s as the authentication method.
 
-![Screenshot](Vault-k8s-aws-secrets-workflow.drawio.png)
+![Screenshot](./img/Vault-k8s-aws-secrets-workflow.drawio.png)
 # :scroll: Prerequisites
 
 1. An AWS account
